@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>语文魔法学堂 🎪</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary: #FF9F9F;
+            --secondary: #A3E4D7;
+            --accent: #FFD93D;
+        }
+
+        body {
+            background: url('data:image/svg+xml,<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20,50 Q40,25 60,50 T100,50" fill="%23FFE7E7"/></svg>') repeat-y,
+                        linear-gradient(150deg, #FFF3E0 0%, #E8F5E9 100%);
+            font-family: 'Comic Sans MS', cursive;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 30px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .magic-card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            margin: 20px 0;
+            position: relative;
+            border: 3px solid var(--primary);
+            transition: transform 0.3s;
+        }
+
+        .cloud-input {
+            padding: 15px;
+            border: 3px solid var(--secondary);
+            border-radius: 20px;
+            font-size: 18px;
+            background: #FFF;
+            margin: 10px;
+            width: 250px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .starry-btn {
+            background: linear-gradient(45deg, #FF9F9F, #FFD93D);
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .level-badge {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            position: absolute;
+            right: -20px;
+            top: -20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            background: linear-gradient(135deg, #FF9F9F, #FFD93D);
+            color: white;
+        }
+
+        #chart {
+            width: 100%;
+            height: 400px;
+            margin: 30px 0;
+        }
+
+        .advice-section {
+            background: #FFF9EC;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 15px 0;
+            border-left: 5px solid var(--accent);
+        }
+
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        #uploadStatus {
+            color: #6BCB77;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 教师上传区 -->
+        <div class="magic-card">
+            <h2>🧙♀️ 教师魔法区</h2>
+            <input type="file" id="excelInput" accept=".xlsx">
+            <p id="uploadStatus"></p>
+        </div>
+
+        <!-- 家长查询区 -->
+        <div class="magic-card">
+            <h2>🔍 魔法查询镜</h2>
+            <input type="text" class="cloud-input" placeholder="小魔法师姓名" id="name">
+            <input type="text" class="cloud-input" placeholder="学号魔咒" id="stuId">
+            <button class="starry-btn" onclick="queryResult()">✨ 显示成绩</button>
+            
+            <div id="result" style="display:none;">
+                <div class="level-badge">A</div>
+                <h3>📜 语文魔法报告 📜</h3>
+                <div class="advice-section" id="suggestions"></div>
+            </div>
+        </div>
+
+        <!-- 数据分析区 -->
+        <div class="magic-card">
+            <h2>📈 学习魔法地图</h2>
+            <div id="chart"></div>
+        </div>
+    </div>
+
+<script>
+// 数据存储初始化
+if(!localStorage.getItem('studentData')) {
+    localStorage.setItem('studentData', JSON.stringify({}));
+}
+
+// Excel处理逻辑
+document.getElementById('excelInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+            
+            const existingData = JSON.parse(localStorage.getItem('studentData') || "{}");
+
+            jsonData.forEach(item => {
+                const key = `${item.姓名}_${item.学号}`;
+                if (!existingData[key]) {
+                    existingData[key] = [];
+                }
+                existingData[key].push({
+                    注音: item.注音成绩,
+                    词语: item.词语成绩,
+                    等级: calculateLevel(item.注音成绩, item.词语成绩),
+                    时间: new Date().toLocaleDateString()
+                });
+            });
+
+            localStorage.setItem('studentData', JSON.stringify(existingData));
+            document.getElementById('uploadStatus').textContent = 
+                `✅ 成功导入 ${jsonData.length} 条记录！`;
+                
+            setTimeout(() => {
+                document.getElementById('uploadStatus').textContent = '';
+            }, 3000);
+
+        } catch (error) {
+            console.error('导入失败:', error);
+            document.getElementById('uploadStatus').textContent = 
+                '❌ 文件格式错误，请使用标准模板';
+            setTimeout(() => {
+                document.getElementById('uploadStatus').textContent = '';
+            }, 3000);
+        }
+    };
+    
+    reader.onerror = () => {
+        document.getElementById('uploadStatus').textContent = 
+            '❌ 文件读取失败，请重试';
+    };
+    
+    reader.readAsArrayBuffer(file);
+});
+
+// 等级计算函数
+function calculateLevel(pinyin, words) {
+    const total = pinyin * 0.6 + words * 0.4;
+    if(total >= 90) return 'A';
+    if(total >= 75) return 'B';
+    if(total >= 60) return 'C';
+    return 'D';
+}
+
+// 智能建议生成器
+function generateAdvice(level, pinyin, words) {
+    const baseAdvice = {
+        A: {
+            注音: "👏 注音小能手！可以挑战多音字和方言发音差异练习",
+            词语: "🏆 词语达人！建议尝试成语接龙和词语分类游戏"
+        },
+        B: {
+            注音: "🔊 注音良好！需要加强前后鼻音区分练习",
+            词语: "📚 词语掌握良好！建议增加形近字辨析练习"
+        },
+        C: {
+            注音: "📢 注音基础需巩固！每天跟读课本录音3遍",
+            词语: "✍️ 词语需要加强！建议每天听写10个课本词语"
+        },
+        D: {
+            注音: "💪 注音需要特训！使用拼音卡片每天练习30分钟",
+            词语: "🆘 词语急需加强！从基础字词开始每日听写"
+        }
+    }[level];
+
+    const pinyinTips = pinyin < 85 ? [
+        "• 制作拼音卡片进行配对游戏",
+        "• 用彩色笔标注易错拼音",
+        "• 录制自己的朗读进行对比"
+    ] : [];
+
+    const wordTips = words < 85 ? [
+        "• 制作词语扑克牌进行组句游戏",
+        "• 在生活场景中寻找学过的词语",
+        "• 用词语编简短的故事"
+    ] : [];
+
+    return `
+        <h4>🌈 学习魔法指南：</h4>
+        <p>📌 注音建议：${baseAdvice.注音}</p>
+        ${pinyinTips.map(t => `<p>✨ ${t}</p>`).join('')}
+        <p>📌 词语建议：${baseAdvice.词语}</p>
+        ${wordTips.map(t => `<p>✨ ${t}</p>`).join('')}
+        <p>⏰ 推荐每日学习计划：${getDailyPlan(level)}</p>
+    `;
+}
+
+function getDailyPlan(level) {
+    const plans = {
+        A: "晨读15分钟 + 拓展阅读20分钟 + 创作练习15分钟",
+        B: "晨读20分钟 + 专项练习15分钟 + 复习10分钟", 
+        C: "晨读30分钟 + 基础练习20分钟 + 听写10分钟",
+        D: "晨读30分钟 + 专项训练30分钟 + 家长辅导15分钟"
+    };
+    return plans[level];
+}
+
+// 查询功能
+function queryResult() {
+    const name = document.getElementById('name').value.trim();
+    const stuId = document.getElementById('stuId').value.trim();
+    if(!name || !stuId) return;
+
+    const data = JSON.parse(localStorage.getItem('studentData') || {});
+    const key = `${name}_${stuId}`;
+    
+    if(data[key]) {
+        const latest = data[key][data[key].length - 1];
+        document.getElementById('result').style.display = 'block';
+        document.querySelector('.level-badge').textContent = latest.等级;
+        document.getElementById('suggestions').innerHTML = 
+            generateAdvice(latest.等级, latest.注音, latest.词语);
+        renderChart(data, key);
+    }
+}
+
+// ECharts图表配置
+function renderChart(data, key) {
+    const chart = echarts.init(document.getElementById('chart'));
+    const historyData = data[key] || [];
+    
+    const option = {
+        tooltip: { 
+            trigger: 'axis',
+            formatter: function(params) {
+                return `📅 ${params[0].axisValue}<br>
+                        📝 注音：${params[0].data}分<br>
+                        📚 词语：${params[1].data}分`;
+            }
+        },
+        legend: { 
+            data: ['注音', '词语'],
+            bottom: 10
+        },
+        xAxis: { 
+            type: 'category', 
+            data: historyData.map(d => d.时间),
+            axisLabel: {
+                rotate: 45,
+                fontSize: 12
+            }
+        },
+        yAxis: { 
+            type: 'value', 
+            max: 100,
+            axisLabel: {
+                formatter: '{value} 分'
+            }
+        },
+        series: [
+            { 
+                name: '注音', 
+                type: 'line', 
+                data: historyData.map(d => d.注音),
+                lineStyle: { color: '#FF9F9F' },
+                itemStyle: { color: '#FF9F9F' },
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 10
+            },
+            { 
+                name: '词语', 
+                type: 'line',
+                data: historyData.map(d => d.词语),
+                lineStyle: { color: '#A3E4D7' },
+                itemStyle: { color: '#A3E4D7' },
+                smooth: true,
+                symbol: 'rect',
+                symbolSize: 10
+            }
+        ]
+    };
+    
+    chart.setOption(option);
+}
+</script>
+</body>
+</html>
